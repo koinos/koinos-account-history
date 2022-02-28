@@ -1,1 +1,1 @@
-# koinos-repo-template
+# Contract Meta Store

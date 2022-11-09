@@ -1,17 +1,20 @@
 #pragma
 
-#include <koinos/crypto/multihash.hpp>
-#include <koinos/exception.hpp>
+#include <koinos/state_db/state_db.hpp>
+
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/broadcast/broadcast.pb.h>
 
 namespace koinos::account_history {
 
-namespace detail {
+namespace detail { class account_history_impl; }
 
-class account_history_impl;
-
-} // detail
+enum class fork_resolution_algorithm
+{
+   fifo,
+   block_time,
+   pob
+};
 
 class account_history
 {
@@ -19,7 +22,7 @@ private:
    std::unique_ptr< detail::account_history_impl > _my;
 
 public:
-   account_history( std::vector< std::string >& whitelist );
+   account_history( const std::vector< std::string >& whitelist );
    ~account_history();
 
    void open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset );
@@ -29,6 +32,6 @@ public:
    void handle_irreversible( const broadcast::block_irreversible& );
 
    //std::vector< >get_account_history( const std::string& account, uint32_t seq_num, uint32_t limit, bool ascending ) const;
-}
+};
 
 } // koinos::account_history

@@ -37,6 +37,7 @@
 #define LOG_LEVEL_DEFAULT              "info"
 #define INSTANCE_ID_OPTION             "instance-id"
 #define STATEDIR_OPTION                "statedir"
+#define STATEDIR_DEFAULT               "db"
 #define RESET_OPTION                   "reset"
 #define JOBS_OPTION                    "jobs"
 #define JOBS_DEFAULT                   uint64_t( 2 )
@@ -148,6 +149,28 @@ int main( int argc, char** argv )
          LOG(warning) << "Could not find config (config.yml or config.yaml expected), using default values";
       }
 
+      account_history::fork_resolution_algorithm fork_algorithm;
+
+      if ( fork_algorithm_option == FIFO_ALGORITHM )
+      {
+         LOG(info) << "Using fork resolution algorithm: " << FIFO_ALGORITHM;
+         fork_algorithm = account_history::fork_resolution_algorithm::fifo;
+      }
+      else if ( fork_algorithm_option == BLOCK_TIME_ALGORITHM )
+      {
+         LOG(info) << "Using fork resolution algorithm: " << BLOCK_TIME_ALGORITHM;
+         fork_algorithm = account_history::fork_resolution_algorithm::block_time;
+      }
+      else if ( fork_algorithm_option == POB_ALGORITHM )
+      {
+         LOG(info) << "Using fork resolution algorithm: " << POB_ALGORITHM;
+         fork_algorithm = account_history::fork_resolution_algorithm::pob;
+      }
+      else
+      {
+         KOINOS_THROW( invalid_argument, "${a} is not a valid fork algorithm", ("a", fork_algorithm_option) );
+      }
+
       std::vector< std::string > whitelist;
 
       for ( const auto& address : whitelist_addresses )
@@ -164,7 +187,6 @@ int main( int argc, char** argv )
 
       LOG(info) << "Starting account history...";
       LOG(info) << "Number of jobs: " << jobs;
-      LOG(info) << "Transaction expiration: " << tx_expiration.count() << "s";
 
       boost::asio::signal_set signals( server_ioc );
       signals.add( SIGINT );
@@ -259,6 +281,7 @@ int main( int argc, char** argv )
             resp.SerializeToOstream( &out );
             return out.str();
             */
+            return "";
          }
       );
 
@@ -299,7 +322,7 @@ int main( int argc, char** argv )
 
             try
             {
-               account_history->handle_irreversibility( block_irr );
+               account_history->handle_irreversible( block_irr );
             }
             catch ( const std::exception& e )
             {
@@ -309,7 +332,7 @@ int main( int argc, char** argv )
       );
 
       timer.expires_after( 1s );
-      timer.async_wait( boost::bind( timer_func, boost::asio::placeholders::error, tx_expiration ) );
+      //timer.async_wait( boost::bind( timer_func, boost::asio::placeholders::error, tx_expiration ) );
 
       account_history->open( statedir, fork_algorithm, reset );
 

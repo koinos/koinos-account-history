@@ -1,17 +1,12 @@
 #include <koinos/account_history/account_history.hpp>
+#include <koinos/account_history/state.hpp>
 
 #include <koinos/state_db/state_db.hpp>
+#include <koinos/util/conversion.hpp>
 
 #include <koinos/account_history/account_history.pb.h>
 
 namespace koinos::account_history {
-
-namespace space
-{
-   const std::string record_space = "\x01";
-   const std::string account_metadata_space = "\x02";
-   const std::string account_history = "\x03";
-}
 
 namespace detail {
 
@@ -27,13 +22,13 @@ class account_history_impl {
       void handle_block( const broadcast::block_accepted& );
       void handle_irreversible( const broadcast::block_irreversible& );
 
-      void add_transaction( state_node_ptr state_node, shared_lock_ptr db_lock, const protocol::transaction& );
-      void record_history( state_node_ptr state_node, shared_lock_ptr db_lock, const std::string& address, const std::string& trx_id );
+      void add_transaction( state_db::state_node_ptr state_node, const protocol::transaction&, const protocol::transaction_receipt& );
+      void record_history( state_db::state_node_ptr state_node, const std::string& address, const std::string& id );
 
    private:
       state_db::database _db;
       const std::vector< std::string >& _whitelist;
-}
+};
 
 account_history_impl::account_history_impl( const std::vector< std::string >& whitelist ) :
    _whitelist( whitelist )
@@ -74,21 +69,24 @@ void account_history_impl::close()
    _db.close( _db.get_unique_lock() );
 }
 
-void account_history_impl::handle_irreversible( const broadcast::block_irreversible& bim )
+void account_history_impl::handle_irreversible( const broadcast::block_irreversible& block_irr )
 {
+   auto block_id = util::converter::to< crypto::multihash >( block_irr.topology().id() );
    auto db_lock = _db.get_unique_lock();
-   auto lib = _db.get_node( bim.topology().id(), db_lock );
+   auto lib = _db.get_node( block_id, db_lock );
 
    if ( lib )
    {
-      _db.commit_node( bim.topology().id(), db_lock );
+      _db.commit_node( block_id, db_lock );
    }
 }
 
-void account_history_impl::handle_block( const broadcast::block_accepted& bam )
+void account_history_impl::handle_block( const broadcast::block_accepted& block_accept )
 {
+   auto block_id = util::converter::to< crypto::multihash >( block_accept.block().id() );
+   auto previous_id = util::converter::to< crypto::multihash >( block_accept.block().header().previous() );
    auto db_lock = _db.get_shared_lock();
-   auto state_node = _db.create_writable_node( bam.block().header().previous(), bam.block().id(), bam.block.header(), db_lock );
+   auto state_node = _db.create_writable_node( previous_id, block_id, block_accept.block().header(), db_lock );
 
    if ( !state_node )
       return;
@@ -97,89 +95,107 @@ void account_history_impl::handle_block( const broadcast::block_accepted& bam )
    {
       std::set< std::string > impacted_addresses;
 
-      impacted_addresses.insert( bam.block().header().producer() );
+      // Add signer address to impacted for block
+      impacted_addresses.insert( block_accept.block().header().signer() );
 
-      for ( const auto& event : bam.receipt().events() )
+      // Add event source and impacted addresses to impacted for block
+      for ( const auto& event : block_accept.receipt().events() )
       {
-         impacted_addresses.insert( source );
-         impacted_addresses.insert( std::begin( event.impacted ), std::end( event.impacted ) );
+         impacted_addresses.insert( event.source() );
+         impacted_addresses.insert( std::begin( event.impacted() ), std::end( event.impacted() ) );
       }
 
-      for ( const auto& address : impacted_addressed )
+      // Add block id as record for every impacted address
+      for ( const auto& address : impacted_addresses )
       {
-         record_history( state_node, address, bam.block.id() )
+         record_history( state_node, address, block_accept.block().id() );
       }
 
-      // Add block
+      // Add block record
       history_record record;
-      record.mutable_block()->set_header( bam.block().header() );
-      record.mutable_block()->set_receipt( bam.receipt() );
+      *record.mutable_block()->mutable_header() = block_accept.block().header();
+      *record.mutable_block()->mutable_receipt() = block_accept.receipt();
 
-      state_node.put_object( space::transaction_space, trx.id(), util::converter::as< std::string >( record ) );
+      auto record_str = util::converter::as< std::string >( record );
+      state_node->put_object( space::history_record(), block_accept.block().id(), &record_str );
 
       // Add records for all contained transactions
-      for ( std::size_t i = 0; i < bam.block().transactions().size(); i++ )
+      for ( std::size_t i = 0; i < block_accept.block().transactions().size(); i++ )
       {
-         add_transaction( state_node, bam.block()transactions( i ), bam.receipt().transaction_receipts( i ) );
+         add_transaction( state_node, block_accept.block().transactions( 0 ), block_accept.receipt().transaction_receipts( 0 ) );
       }
    }
    catch ( ... )
    {
-      _db.discard_node( bam.block.id(), db_lock );
+      _db.discard_node( block_id, db_lock );
       throw;
    }
 
-   _db.finalize_node( bam.block.id() );
+   _db.finalize_node( block_id, db_lock );
 }
 
-void account_history_impl::add_transaction( state_node_ptr state_node, const protocol::transaction& trx, const protocol::transaction_receipt& trx_rec )
+void account_history_impl::add_transaction( state_db::state_node_ptr state_node, const protocol::transaction& trx, const protocol::transaction_receipt& trx_rec )
 {
    std::set< std::string > impacted_addresses;
 
-   impacted_addresses.insert( trx.header().payer() )
+   // Add payer to impacted
+   impacted_addresses.insert( trx.header().payer() );
 
+   // Add payee to impacted, if it exists
    if ( trx.header().payee().size() )
-      impacted_addresses.insert( trx.header().payee() )
+      impacted_addresses.insert( trx.header().payee() );
 
-   for ( const auto& op : trx.operations )
+   // For every op, add relevant addresses to impacted
+   for ( const auto& op : trx.operations() )
    {
-      if ( o.has_upload_contract() )
-         impacted_addresses.insert( o.upload_contract().contract_id() )
-      else if ( o.has_call_contract() )
-         impacted_addresses.insert( o.call_contract().contract_id() )
-      else if ( o.has_set_system_call() && o.set_system_call().target().has_system_call_bundle() )
-         impacted_addresses.insert( o.set_system_call().target().system_call_bundle().contract_id() )
-      else if ( o.has_set_system_contract() )
-         impacted_addresses.insert( o.set_system_conract().contract_id() );
+      if ( op.has_upload_contract() )
+      {
+         impacted_addresses.insert( op.upload_contract().contract_id() );
+      }
+      else if ( op.has_call_contract() )
+      {
+         impacted_addresses.insert( op.call_contract().contract_id() );
+      }
+      else if ( op.has_set_system_call() && op.set_system_call().target().has_system_call_bundle() )
+      {
+         impacted_addresses.insert( op.set_system_call().target().system_call_bundle().contract_id() );
+      }
+      else if ( op.has_set_system_contract() )
+      {
+         impacted_addresses.insert( op.set_system_contract().contract_id() );
+      }
    }
 
+   // For every event, add source and impacted to impacted
    for ( const auto& event : trx_rec.events() )
    {
-      impacted_addresses.insert( source );
-      impacted_addresses.insert( std::begin( event.impacted ), std::end( event.impacted ) );
+      impacted_addresses.insert( event.source() );
+      impacted_addresses.insert( std::begin( event.impacted() ), std::end( event.impacted() ) );
    }
 
-   for ( const auto& address, impacted_addresses )
+   // Add trx id as record for every impacted address
+   for ( const auto& address : impacted_addresses )
    {
-      record_history( address, trx.id() );
+      record_history( state_node, address, trx.id() );
    }
 
-   // Add transaction
+   // Add transaction record
    history_record record;
-   record.mutable_trx()->set_transaction( trx );
-   record.mutable_trx()->set_receipt( trx_rec );
+   *record.mutable_trx()->mutable_transaction() = trx ;
+   *record.mutable_trx()->mutable_receipt() = trx_rec;
 
-   state_node.put_object( space::transaction_space, trx.id(), util::converter::as< std::string >( record ) );
+   auto record_str = util::converter::as< std::string >( record );
+   state_node->put_object( space::history_record(), trx.id(), &record_str );
 }
 
-void account_history_impl::record_history( state_node_ptr state_node, const std::string& address, const std::string& id )
+void account_history_impl::record_history( state_db::state_node_ptr state_node, const std::string& address, const std::string& id )
 {
    // Get address seq num
-
    account_metadata meta;
 
-   const auto result = state_node.get_object( space::account_metadata_space, address );
+   const auto result = state_node->get_object( space::account_metadata(), address );
 
+   // Increment seq_num if record already exists
    if ( result )
    {
       meta = util::converter::to< account_metadata >( *result );
@@ -191,8 +207,10 @@ void account_history_impl::record_history( state_node_ptr state_node, const std:
    index.set_address( address );
    index.set_seq_num( meta.seq_num() );
 
-   state_node.put_object( space::account_history, util::converter::as< std::string >( index ), id );
-   state_node.put_object( space::account_metadata_space, address, util::converter::as< std::string >( meta ) );
+   state_node->put_object( space::account_history(), util::converter::as< std::string >( index ), &id );
+
+   auto meta_str = util::converter::as< std::string >( meta );
+   state_node->put_object( space::account_metadata(), address, &meta_str );
 }
 
 } // detail
@@ -206,22 +224,22 @@ account_history::~account_history()
    _my->close();
 }
 
-account_history::open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset )
+void account_history::open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset )
 {
    _my->open( p, algo, reset );
 }
 
-account_history::close()
+void account_history::close()
 {
    _my->close();
 }
 
-account_history::handle_block( const broadcast::block_accepted& bam )
+void account_history::handle_block( const broadcast::block_accepted& block_accept )
 {
-   _my->handle_block( bam );
+   _my->handle_block( block_accept );
 }
 
-account_history::handle_irreversible( const broadcast::block_irreversible& irr )
+void account_history::handle_irreversible( const broadcast::block_irreversible& irr )
 {
    _my->handle_irreversible( irr );
 }

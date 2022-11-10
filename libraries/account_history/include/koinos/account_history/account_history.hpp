@@ -2,6 +2,7 @@
 
 #include <koinos/state_db/state_db.hpp>
 
+#include <koinos/account_history/account_history.pb.h>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/broadcast/broadcast.pb.h>
 
@@ -31,7 +32,7 @@ public:
    void handle_block( const broadcast::block_accepted& );
    void handle_irreversible( const broadcast::block_irreversible& );
 
-   //std::vector< >get_account_history( const std::string& account, uint32_t seq_num, uint32_t limit, bool ascending ) const;
+   std::vector< account_history_entry > get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending ) const;
 };
 
 } // koinos::account_history

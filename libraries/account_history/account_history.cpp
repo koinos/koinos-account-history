@@ -25,6 +25,8 @@ class account_history_impl {
       void add_transaction( state_db::state_node_ptr state_node, const protocol::transaction&, const protocol::transaction_receipt& );
       void record_history( state_db::state_node_ptr state_node, const std::string& address, const std::string& id );
 
+      std::vector< account_history_entry > get_account_history( const std::string& account, uint32_t seq_num, uint32_t limit, bool ascending ) const;
+
    private:
       state_db::database _db;
       const std::vector< std::string >& _whitelist;
@@ -213,6 +215,67 @@ void account_history_impl::record_history( state_db::state_node_ptr state_node, 
    state_node->put_object( space::account_metadata(), address, &meta_str );
 }
 
+std::vector< account_history_entry > account_history_impl::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending ) const
+{
+   // assert (limit <= 1000)
+
+   history_index index;
+   index.set_address( address );
+   index.set_seq_num( seq_num );
+
+   auto state_node = _db.get_head( _db.get_shared_lock() );
+
+   if ( !ascending && seq_num == 0 )
+   {
+      const auto result = state_node->get_object( space::account_metadata(), address );
+
+      if ( result )
+      {
+         index.set_seq_num( util::converter::to< account_metadata >( *result ).seq_num() );
+      }
+   }
+
+   std::vector< account_history_entry > entries;
+   entries.reserve( limit );
+
+   while ( entries.size() < limit )
+   {
+      std::string id;
+
+      auto id_ptr = state_node->get_object( space::account_history(), util::converter::as< std::string >( index ) );
+      if ( !id_ptr )
+         break;
+
+      auto record_ptr = state_node->get_object( space::history_record(), *id_ptr );
+      // assert record_ptr
+      auto record = util::converter::to< history_record >( *record_ptr );
+
+      account_history_entry entry;
+      entry.set_seq_num( index.seq_num() );
+      if ( record.has_block() )
+      {
+         entry.set_allocated_block( record.release_block() );
+      }
+      else
+      {
+         entry.set_allocated_trx( record.release_trx() );
+      }
+
+      entries.emplace_back( std::move( entry ) );
+
+      if ( ascending )
+      {
+         index.set_seq_num( index.seq_num() + 1 );
+      }
+      else
+      {
+         index.set_seq_num( index.seq_num() - 1 );
+      }
+   }
+
+   return entries;
+}
+
 } // detail
 
 account_history::account_history( const std::vector< std::string >& whitelist ) :
@@ -242,6 +305,11 @@ void account_history::handle_block( const broadcast::block_accepted& block_accep
 void account_history::handle_irreversible( const broadcast::block_irreversible& irr )
 {
    _my->handle_irreversible( irr );
+}
+
+std::vector< account_history_entry > account_history::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending ) const
+{
+   return _my->get_account_history( address, seq_num, limit, ascending );
 }
 
 } // koinos::account_history

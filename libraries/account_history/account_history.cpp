@@ -2,6 +2,7 @@
 #include <koinos/account_history/state.hpp>
 
 #include <koinos/state_db/state_db.hpp>
+#include <koinos/util/base58.hpp>
 #include <koinos/util/conversion.hpp>
 
 #include <koinos/account_history/account_history.pb.h>
@@ -12,7 +13,7 @@ namespace detail {
 
 class account_history_impl {
    public:
-      account_history_impl() = delete;
+      account_history_impl() = default;
       account_history_impl( const std::vector< std::string >& );
       ~account_history_impl() = default;
 
@@ -29,7 +30,7 @@ class account_history_impl {
 
    private:
       state_db::database _db;
-      const std::vector< std::string >& _whitelist;
+      const std::vector< std::string > _whitelist;
 };
 
 account_history_impl::account_history_impl( const std::vector< std::string >& whitelist ) :
@@ -213,6 +214,8 @@ void account_history_impl::record_history( state_db::state_node_ptr state_node, 
 
    auto meta_str = util::converter::as< std::string >( meta );
    state_node->put_object( space::account_metadata(), address, &meta_str );
+
+   LOG(debug) << "Added record " << meta.seq_num() << " for address " << util::to_base58( address );
 }
 
 std::vector< account_history_entry > account_history_impl::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending ) const
@@ -277,6 +280,10 @@ std::vector< account_history_entry > account_history_impl::get_account_history( 
 }
 
 } // detail
+
+account_history::account_history() :
+   _my( std::make_unique< detail::account_history_impl >() )
+{}
 
 account_history::account_history( const std::vector< std::string >& whitelist ) :
    _my( std::make_unique< detail::account_history_impl >( whitelist ) )

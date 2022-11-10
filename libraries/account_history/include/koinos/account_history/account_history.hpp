@@ -23,6 +23,7 @@ private:
    std::unique_ptr< detail::account_history_impl > _my;
 
 public:
+   account_history();
    account_history( const std::vector< std::string >& whitelist );
    ~account_history();
 

@@ -26,11 +26,11 @@ class account_history_impl {
       void add_transaction( state_db::state_node_ptr state_node, const protocol::transaction&, const protocol::transaction_receipt& );
       void record_history( state_db::state_node_ptr state_node, const std::string& address, const std::string& id );
 
-      std::vector< account_history_entry > get_account_history( const std::string& account, uint32_t seq_num, uint32_t limit, bool ascending ) const;
+      std::vector< account_history_entry > get_account_history( const std::string& account, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const;
 
    private:
       state_db::database _db;
-      const std::vector< std::string > _whitelist;
+      std::vector< std::string > _whitelist;
 };
 
 account_history_impl::account_history_impl( const std::vector< std::string >& whitelist ) :
@@ -218,7 +218,7 @@ void account_history_impl::record_history( state_db::state_node_ptr state_node, 
    LOG(debug) << "Added record " << meta.seq_num() << " for address " << util::to_base58( address );
 }
 
-std::vector< account_history_entry > account_history_impl::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending ) const
+std::vector< account_history_entry > account_history_impl::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const
 {
    // assert (limit <= 1000)
 
@@ -226,7 +226,16 @@ std::vector< account_history_entry > account_history_impl::get_account_history( 
    index.set_address( address );
    index.set_seq_num( seq_num );
 
-   auto state_node = _db.get_head( _db.get_shared_lock() );
+   state_db::state_node_ptr state_node;
+
+   if ( from_lib )
+   {
+      state_node = _db.get_root( _db.get_shared_lock() );
+   }
+   else
+   {
+      state_node = _db.get_head( _db.get_shared_lock() );
+   }
 
    if ( !ascending && seq_num == 0 )
    {
@@ -314,9 +323,9 @@ void account_history::handle_irreversible( const broadcast::block_irreversible& 
    _my->handle_irreversible( irr );
 }
 
-std::vector< account_history_entry > account_history::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending ) const
+std::vector< account_history_entry > account_history::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const
 {
-   return _my->get_account_history( address, seq_num, limit, ascending );
+   return _my->get_account_history( address, seq_num, limit, ascending, from_lib );
 }
 
 } // koinos::account_history

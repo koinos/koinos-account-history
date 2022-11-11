@@ -14,6 +14,7 @@
 
 #include <koinos/account_history/account_history.hpp>
 #include <koinos/broadcast/broadcast.pb.h>
+#include <koinos/rpc/account_history/account_history_rpc.pb.h>
 #include <koinos/exception.hpp>
 #include <koinos/mq/client.hpp>
 #include <koinos/mq/request_handler.hpp>
@@ -214,41 +215,33 @@ int main( int argc, char** argv )
          "account_history",
          [&]( const std::string& msg ) -> std::string
          {
-            /*
-            koinos::rpc::mempool::mempool_request args;
-            koinos::rpc::mempool::mempool_response resp;
+            koinos::rpc::account_history::account_history_request args;
+            koinos::rpc::account_history::account_history_response resp;
 
             if ( args.ParseFromString( msg ) )
             {
-               try {
+               try
+               {
                   switch( args.request_case() )
                   {
-                     case rpc::mempool::mempool_request::RequestCase::kCheckPendingAccountResources:
+                     case rpc::account_history::account_history_request::RequestCase::kGetAccountHistory:
                      {
-                        const auto& p = args.check_pending_account_resources();
-                        resp.mutable_check_pending_account_resources()->set_success(
-                           mempool->check_pending_account_resources(
-                              p.payer(),
-                              p.max_payer_rc(),
-                              p.rc_limit()
-                           )
-                        );
+                        const auto& a = args.get_account_history();
+                        const auto& values = account_history->get_account_history(
+                           a.address(),
+                           a.seq_num(),
+                           a.limit(),
+                           a.ascending(),
+                           a.from_lib() );
 
-                        break;
-                     }
-                     case rpc::mempool::mempool_request::RequestCase::kGetPendingTransactions:
-                     {
-                        const auto& p = args.get_pending_transactions();
-                        auto transactions = mempool->get_pending_transactions( p.limit() );
-                        auto pending_trxs = resp.mutable_get_pending_transactions();
-                        for( const auto& trx : transactions )
+                        for ( const auto& v : values )
                         {
-                           pending_trxs->add_pending_transactions()->CopyFrom( trx );
+                           resp.mutable_get_account_history()->add_values()->CopyFrom( v );
                         }
 
                         break;
                      }
-                     case rpc::mempool::mempool_request::RequestCase::kReserved:
+                     case rpc::account_history::account_history_request::RequestCase::kReserved:
                         resp.mutable_reserved();
                         break;
                      default:
@@ -280,8 +273,6 @@ int main( int argc, char** argv )
             std::stringstream out;
             resp.SerializeToOstream( &out );
             return out.str();
-            */
-            return "";
          }
       );
 

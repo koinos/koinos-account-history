@@ -15,6 +15,8 @@
 #include <koinos/account_history/account_history.hpp>
 #include <koinos/broadcast/broadcast.pb.h>
 #include <koinos/rpc/account_history/account_history_rpc.pb.h>
+#include <koinos/rpc/block_store/block_store_rpc.pb.h>
+#include <koinos/rpc/chain/chain_rpc.pb.h>
 #include <koinos/exception.hpp>
 #include <koinos/mq/client.hpp>
 #include <koinos/mq/request_handler.hpp>
@@ -52,8 +54,76 @@ KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
 using namespace boost;
 using namespace koinos;
 
+using log_func_type = std::function< void( const boost::system::error_code&, std::shared_ptr< account_history::account_history > ) >;
+using sync_func_type = std::function< void( const boost::system::error_code&, std::shared_ptr< account_history::account_history > ) >;
+
 const std::string& version_string();
-using timer_func_type = std::function< void( const boost::system::error_code&, std::chrono::seconds ) >;
+
+bool sync_func_impl( const boost::system::error_code& ec, koinos::mq::client& client, std::shared_ptr< account_history::account_history > ah )
+{
+   // Get chain head info, if chain LIB is greater than AH LIB, get blocks between chain head and
+   // AH LIB to catch up with chain.
+   rpc::chain::chain_request chain_req;
+   chain_req.mutable_get_head_info();
+
+   auto future = client.rpc( util::service::chain, util::converter::as< std::string >( chain_req ), 1000ms, mq::retry_policy::exponential_backoff );
+   rpc::chain::chain_response chain_resp;
+   chain_resp.ParseFromString( future.get() );
+
+   if( !chain_resp.has_error() && chain_resp.has_get_head_info() )
+   {
+      auto chain_lib = chain_resp.get_head_info().last_irreversible_block();
+      auto ah_lib = ah->get_lib_height();
+
+      if ( ah_lib < chain_lib )
+      {
+         uint64_t request_size = std::min( uint64_t( 500 ), chain_resp.get_head_info().head_topology().height() - ( ah_lib + 1 ) );
+
+         rpc::block_store::block_store_request bs_req;
+         bs_req.mutable_get_blocks_by_height()->set_allocated_head_block_id( chain_resp.mutable_get_head_info()->mutable_head_topology()->release_id() );
+         bs_req.mutable_get_blocks_by_height()->set_ancestor_start_height( ah_lib + 1 );
+         bs_req.mutable_get_blocks_by_height()->set_num_blocks( request_size );
+         bs_req.mutable_get_blocks_by_height()->set_return_block( true );
+         bs_req.mutable_get_blocks_by_height()->set_return_receipt( true );
+
+         auto future = client.rpc( util::service::block_store, util::converter::as< std::string >( bs_req ), 1000ms, mq::retry_policy::exponential_backoff );
+         rpc::block_store::block_store_response bs_resp;
+         bs_resp.ParseFromString( future.get() );
+
+         if ( !bs_resp.has_error() && bs_resp.has_get_blocks_by_height() )
+         {
+            auto blocks_by_height = bs_resp.mutable_get_blocks_by_height();
+
+            for ( uint32_t i = 0; i < blocks_by_height->block_items_size(); i++ )
+            {
+               broadcast::block_accepted block_accept;
+               block_accept.set_allocated_block( blocks_by_height->mutable_block_items( i )->release_block() );
+               block_accept.set_allocated_receipt( blocks_by_height->mutable_block_items( i )->release_receipt() );
+
+               ah->handle_block( block_accept );
+
+               if ( block_accept.block().header().height() <= chain_lib )
+               {
+                  broadcast::block_irreversible block_irr;
+                  block_irr.mutable_topology()->set_allocated_id( block_accept.mutable_block()->release_id() );
+                  block_irr.mutable_topology()->set_height( block_accept.block().header().height() );
+                  block_irr.mutable_topology()->set_allocated_previous( block_accept.mutable_block()->mutable_header()->release_previous() );
+
+                  ah->handle_irreversible( block_irr );
+               }
+            }
+
+            if ( request_size == 500 )
+            {
+               LOG(info) << "Synced to block " << ah_lib + request_size;
+               return true;
+            }
+         }
+      }
+   }
+
+   return false;
+};
 
 int main( int argc, char** argv )
 {
@@ -64,15 +134,31 @@ int main( int argc, char** argv )
    boost::asio::io_context main_ioc, server_ioc, client_ioc;
    auto request_handler = koinos::mq::request_handler( server_ioc );
    auto client = koinos::mq::client( client_ioc );
-   auto timer = boost::asio::system_timer( server_ioc );
+   auto log_timer = boost::asio::system_timer( server_ioc );
+   auto sync_timer = boost::asio::system_timer( server_ioc );
 
-   timer_func_type timer_func = [&]( const boost::system::error_code& ec, std::chrono::seconds exp_time )
+   log_func_type log_func = [&]( const boost::system::error_code& ec, std::shared_ptr< account_history::account_history > ah )
    {
       if ( ec == boost::asio::error::operation_aborted )
          return;
 
-      timer.expires_after( 1s );
-      timer.async_wait( boost::bind( timer_func, boost::asio::placeholders::error,  exp_time ) );
+      LOG(info) << "Recently added " << ah->get_recent_entries_count() << " account history entries";
+
+      log_timer.expires_after( 60s );
+      log_timer.async_wait( boost::bind( log_func, boost::asio::placeholders::error, ah ) );
+   };
+
+   sync_func_type sync_func = [&]( const boost::system::error_code& ec, std::shared_ptr< account_history::account_history > ah )
+   {
+      if ( ec == boost::asio::error::operation_aborted )
+         return;
+
+      if ( !sync_func_impl( ec, client, ah ) )
+      {
+         sync_timer.expires_after( 60s );
+      }
+
+      sync_timer.async_wait( boost::bind( sync_func, boost::asio::placeholders::error, ah ) );
    };
 
    try
@@ -322,8 +408,14 @@ int main( int argc, char** argv )
          }
       );
 
-      timer.expires_after( 1s );
-      //timer.async_wait( boost::bind( timer_func, boost::asio::placeholders::error, tx_expiration ) );
+      log_timer.expires_after( 60s );
+      log_timer.async_wait( boost::bind( log_func, boost::asio::placeholders::error, account_history ) );
+
+      if ( statedir.is_relative() )
+         statedir = basedir / "account_history" / statedir;
+
+      if ( !std::filesystem::exists( statedir ) )
+         std::filesystem::create_directories( statedir );
 
       account_history->open( statedir, fork_algorithm, reset );
 
@@ -331,9 +423,23 @@ int main( int argc, char** argv )
       client.connect( amqp_url );
       LOG(info) << "Established AMQP client connection to the server";
 
+      LOG(info) << "Attempting to connect to block_store...";
+      rpc::block_store::block_store_request b_req;
+      b_req.mutable_reserved();
+      client.rpc( util::service::block_store, b_req.SerializeAsString() ).get();
+      LOG(info) << "Established connection to block_store";
+
+      LOG(info) << "Attempting to connect to chain...";
+      rpc::chain::chain_request c_req;
+      c_req.mutable_reserved();
+      client.rpc( util::service::chain, c_req.SerializeAsString() ).get();
+      LOG(info) << "Established connection to chain";
+
       LOG(info) << "Connecting AMQP request handler...";
       request_handler.connect( amqp_url );
       LOG(info) << "Established request handler connection to the AMQP server";
+
+      sync_timer.async_wait( boost::bind( sync_func, boost::asio::placeholders::error, account_history ) );
 
       LOG(info) << "Listening for requests over AMQP";
       auto work = asio::make_work_guard( main_ioc );
@@ -368,7 +474,8 @@ int main( int argc, char** argv )
       retcode = EXIT_FAILURE;
    }
 
-   timer.cancel();
+   log_timer.cancel();
+   sync_timer.cancel();
 
    for ( auto& t : threads )
       t.join();

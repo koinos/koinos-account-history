@@ -28,9 +28,13 @@ class account_history_impl {
 
       std::vector< account_history_entry > get_account_history( const std::string& account, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const;
 
+      uint64_t get_lib_height() const;
+      uint64_t get_recent_entries_count();
+
    private:
       state_db::database _db;
       std::vector< std::string > _whitelist;
+      std::atomic< uint64_t > _recent_entries_count = 0;
 };
 
 account_history_impl::account_history_impl( const std::vector< std::string >& whitelist ) :
@@ -216,6 +220,7 @@ void account_history_impl::record_history( state_db::state_node_ptr state_node, 
    state_node->put_object( space::account_metadata(), address, &meta_str );
 
    LOG(debug) << "Added record " << meta.seq_num() << " for address " << util::to_base58( address );
+   _recent_entries_count++;
 }
 
 std::vector< account_history_entry > account_history_impl::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const
@@ -288,6 +293,16 @@ std::vector< account_history_entry > account_history_impl::get_account_history( 
    return entries;
 }
 
+uint64_t account_history_impl::get_lib_height() const
+{
+   return _db.get_root( _db.get_shared_lock() )->revision();
+}
+
+uint64_t account_history_impl::get_recent_entries_count()
+{
+   return _recent_entries_count.exchange( 0 );
+}
+
 } // detail
 
 account_history::account_history() :
@@ -327,5 +342,16 @@ std::vector< account_history_entry > account_history::get_account_history( const
 {
    return _my->get_account_history( address, seq_num, limit, ascending, from_lib );
 }
+
+uint64_t account_history::get_lib_height() const
+{
+   return _my->get_lib_height();
+}
+
+uint64_t account_history::get_recent_entries_count()
+{
+   return _my->get_recent_entries_count();
+}
+
 
 } // koinos::account_history

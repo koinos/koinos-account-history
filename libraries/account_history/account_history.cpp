@@ -134,7 +134,7 @@ void account_history_impl::handle_block( const broadcast::block_accepted& block_
       // Add records for all contained transactions
       for ( std::size_t i = 0; i < block_accept.block().transactions().size(); i++ )
       {
-         add_transaction( state_node, block_accept.block().transactions( 0 ), block_accept.receipt().transaction_receipts( 0 ) );
+         add_transaction( state_node, block_accept.block().transactions( i ), block_accept.receipt().transaction_receipts( i ) );
       }
    }
    catch ( ... )
@@ -193,7 +193,7 @@ void account_history_impl::add_transaction( state_db::state_node_ptr state_node,
 
    // Add transaction record
    history_record record;
-   *record.mutable_trx()->mutable_transaction() = trx ;
+   *record.mutable_trx()->mutable_transaction() = trx;
    *record.mutable_trx()->mutable_receipt() = trx_rec;
 
    auto record_str = util::converter::as< std::string >( record );
@@ -233,7 +233,7 @@ void account_history_impl::record_history( state_db::state_node_ptr state_node, 
 
 rpc::account_history::get_account_history_response account_history_impl::get_account_history( const rpc::account_history::get_account_history_request& req ) const
 {
-   KOINOS_ASSERT( req.limit() <= 500, request_limit_exception, "request limit exceeded" );
+   KOINOS_ASSERT( req.limit() <= max_request_limit, request_limit_exception, "request limit exceeded" );
 
    history_index index;
    *index.mutable_address() = req.address();
@@ -241,7 +241,7 @@ rpc::account_history::get_account_history_response account_history_impl::get_acc
 
    state_db::state_node_ptr state_node;
 
-   if ( req.from_lib() )
+   if ( req.irreversible() )
    {
       state_node = _db.get_root( _db.get_shared_lock() );
    }
@@ -304,6 +304,7 @@ uint64_t account_history_impl::get_lib_height() const
 {
    return _db.get_root( _db.get_shared_lock() )->revision();
 }
+
 
 uint64_t account_history_impl::get_recent_entries_count()
 {

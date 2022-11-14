@@ -91,7 +91,7 @@ BOOST_AUTO_TEST_CASE( basic )
    req.set_seq_num( 0 );
    req.set_limit( 10 );
    req.set_ascending( true );
-   req.set_from_lib( false );
+   req.set_irreversible( false );
 
    auto resp = _account_history.get_account_history( req );
 
@@ -148,7 +148,7 @@ BOOST_AUTO_TEST_CASE( basic )
    BOOST_TEST_MESSAGE( "Checking history from LIB" );
 
    *req.mutable_address() = alice_address;
-   req.set_from_lib( true );
+   req.set_irreversible( true );
    resp = _account_history.get_account_history( req );
    BOOST_CHECK_EQUAL( resp.values_size(), 0 );
 
@@ -263,7 +263,7 @@ BOOST_AUTO_TEST_CASE( pagination )
    req.set_seq_num( 0 );
    req.set_limit( 250 );
    req.set_ascending( true );
-   req.set_from_lib( false );
+   req.set_irreversible( false );
 
    for ( uint32_t i = 0; i < 1; i++ )
    {
@@ -341,7 +341,7 @@ BOOST_AUTO_TEST_CASE( whitelist )
    req.set_seq_num( 0 );
    req.set_limit( 10 );
    req.set_ascending( true );
-   req.set_from_lib( false );
+   req.set_irreversible( false );
 
    auto resp = ah.get_account_history( req );
 

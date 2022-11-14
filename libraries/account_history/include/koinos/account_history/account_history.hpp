@@ -11,6 +11,8 @@ namespace koinos::account_history {
 
 using rpc::account_history::account_history_entry;
 
+constexpr uint64_t max_request_limit = 500;
+
 KOINOS_DECLARE_EXCEPTION( request_limit_exception );
 KOINOS_DECLARE_EXCEPTION( unknown_record );
 

@@ -27,7 +27,7 @@ private:
 
 public:
    account_history();
-   account_history( const std::vector< std::string >& whitelist );
+   account_history( const std::set< std::string >& whitelist );
    ~account_history();
 
    void open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset );

@@ -20,6 +20,7 @@
 #include <koinos/exception.hpp>
 #include <koinos/mq/client.hpp>
 #include <koinos/mq/request_handler.hpp>
+#include <koinos/util/base58.hpp>
 #include <koinos/util/conversion.hpp>
 #include <koinos/util/options.hpp>
 #include <koinos/util/random.hpp>
@@ -77,7 +78,7 @@ bool sync_func_impl( const boost::system::error_code& ec, koinos::mq::client& cl
 
       if ( ah_lib < chain_lib )
       {
-         uint64_t request_size = std::min( uint64_t( 500 ), chain_resp.get_head_info().head_topology().height() - ( ah_lib + 1 ) );
+         uint64_t request_size = std::min( uint64_t( 500 ), chain_resp.get_head_info().head_topology().height() - ah_lib );
 
          rpc::block_store::block_store_request bs_req;
          bs_req.mutable_get_blocks_by_height()->set_allocated_head_block_id( chain_resp.mutable_get_head_info()->mutable_head_topology()->release_id() );
@@ -85,6 +86,8 @@ bool sync_func_impl( const boost::system::error_code& ec, koinos::mq::client& cl
          bs_req.mutable_get_blocks_by_height()->set_num_blocks( request_size );
          bs_req.mutable_get_blocks_by_height()->set_return_block( true );
          bs_req.mutable_get_blocks_by_height()->set_return_receipt( true );
+
+         LOG(debug) << "Requesting blocks " << ah_lib + 1 << "-" << ah_lib + 1 + request_size;
 
          auto future = client.rpc( util::service::block_store, util::converter::as< std::string >( bs_req ), 1000ms, mq::retry_policy::exponential_backoff );
          rpc::block_store::block_store_response bs_resp;
@@ -116,8 +119,9 @@ bool sync_func_impl( const boost::system::error_code& ec, koinos::mq::client& cl
             if ( request_size == 500 )
             {
                LOG(info) << "Synced to block " << ah_lib + request_size;
-               return true;
             }
+
+            return true;
          }
       }
    }
@@ -142,7 +146,7 @@ int main( int argc, char** argv )
       if ( ec == boost::asio::error::operation_aborted )
          return;
 
-      LOG(info) << "Recently added " << ah->get_recent_entries_count() << " account history entries";
+      LOG(info) << "Recently added " << ah->get_recent_entries_count() << " account history record(s)";
 
       log_timer.expires_after( 60s );
       log_timer.async_wait( boost::bind( log_func, boost::asio::placeholders::error, ah ) );
@@ -156,6 +160,9 @@ int main( int argc, char** argv )
       if ( !sync_func_impl( ec, client, ah ) )
       {
          sync_timer.expires_after( 60s );
+      }
+      else {
+         sync_timer.expires_after( 1ms );
       }
 
       sync_timer.async_wait( boost::bind( sync_func, boost::asio::placeholders::error, ah ) );
@@ -258,13 +265,16 @@ int main( int argc, char** argv )
          KOINOS_THROW( invalid_argument, "${a} is not a valid fork algorithm", ("a", fork_algorithm_option) );
       }
 
-      std::vector< std::string > whitelist;
+      std::set< std::string > whitelist;
+
+      LOG(info) << "Whitelist:";
 
       for ( const auto& address : whitelist_addresses )
       {
          try
          {
-            whitelist.emplace_back( util::from_hex< std::string >( address ) );
+            whitelist.emplace( util::from_base58< std::string >( address ) );
+            LOG(info) << " - " << address;
          }
          catch( const std::exception& e )
          {
@@ -378,6 +388,10 @@ int main( int argc, char** argv )
             {
                account_history->handle_block( block_accept );
             }
+            catch ( const koinos::exception& e )
+            {
+               LOG(info) << "Could not process block accepted: " << e.what();
+            }
             catch ( const std::exception& e )
             {
                LOG(info) << "Could not process block accepted: " << e.what();
@@ -400,6 +414,10 @@ int main( int argc, char** argv )
             try
             {
                account_history->handle_irreversible( block_irr );
+            }
+            catch ( const koinos::exception& e )
+            {
+               LOG(info) << "Could not process block irreversibility: " << e.what();
             }
             catch ( const std::exception& e )
             {

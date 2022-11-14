@@ -14,7 +14,7 @@ namespace detail {
 class account_history_impl {
    public:
       account_history_impl() = default;
-      account_history_impl( const std::vector< std::string >& );
+      account_history_impl( const std::set< std::string >& );
       ~account_history_impl() = default;
 
       void open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset );
@@ -33,11 +33,11 @@ class account_history_impl {
 
    private:
       state_db::database _db;
-      std::vector< std::string > _whitelist;
+      std::set< std::string > _whitelist;
       std::atomic< uint64_t > _recent_entries_count = 0;
 };
 
-account_history_impl::account_history_impl( const std::vector< std::string >& whitelist ) :
+account_history_impl::account_history_impl( const std::set< std::string >& whitelist ) :
    _whitelist( whitelist )
 {}
 
@@ -95,8 +95,13 @@ void account_history_impl::handle_block( const broadcast::block_accepted& block_
    auto db_lock = _db.get_shared_lock();
    auto state_node = _db.create_writable_node( previous_id, block_id, block_accept.block().header(), db_lock );
 
+   LOG(debug) << "Handling block - Height: " << block_accept.block().header().height() <<  ", ID: " << block_id;
+
    if ( !state_node )
+   {
+      LOG(debug) << "Block did not link (" << block_id << ")";
       return;
+   }
 
    try
    {
@@ -197,6 +202,9 @@ void account_history_impl::add_transaction( state_db::state_node_ptr state_node,
 
 void account_history_impl::record_history( state_db::state_node_ptr state_node, const std::string& address, const std::string& id )
 {
+   if ( _whitelist.size() && _whitelist.find( address ) == _whitelist.end() )
+      return;
+
    // Get address seq num
    account_metadata meta;
 
@@ -309,7 +317,7 @@ account_history::account_history() :
    _my( std::make_unique< detail::account_history_impl >() )
 {}
 
-account_history::account_history( const std::vector< std::string >& whitelist ) :
+account_history::account_history( const std::set< std::string >& whitelist ) :
    _my( std::make_unique< detail::account_history_impl >( whitelist ) )
 {}
 

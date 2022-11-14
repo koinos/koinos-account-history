@@ -285,7 +285,7 @@ BOOST_AUTO_TEST_CASE( whitelist )
    event->set_sequence( 0 );
    *event->mutable_source() = bob_address;
 
-   std::vector< std::string > whitelist{ alice_address };
+   std::set< std::string > whitelist{ alice_address };
 
    _account_history.close();
 

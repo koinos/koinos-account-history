@@ -55,9 +55,6 @@ KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
 using namespace boost;
 using namespace koinos;
 
-using log_func_type = std::function< void( const boost::system::error_code&, std::shared_ptr< account_history::account_history > ) >;
-using sync_func_type = std::function< void( const boost::system::error_code&, std::shared_ptr< account_history::account_history > ) >;
-
 const std::string& version_string();
 
 std::string format_time( int64_t time )
@@ -91,76 +88,99 @@ std::string format_time( int64_t time )
    return ss.str();
 }
 
-//bool sync_func_impl( const boost::system::error_code&, std::shared_ptr< account_history::account_history >, std::shared_ptr< client >, std::shared_ptr< std::atomic< uint64_t > > );
-
-bool sync_func_impl( const boost::system::error_code& ec, std::shared_ptr< account_history::account_history > ah, std::shared_ptr< koinos::mq::client > client, std::shared_ptr< std::atomic< uint64_t > > chain_lib_ptr )
+void log_func(
+   const boost::system::error_code& ec,
+   std::shared_ptr< boost::asio::system_timer > timer,
+   std::shared_ptr< account_history::account_history > ah )
 {
+   if ( ec == boost::asio::error::operation_aborted )
+      return;
+
+   LOG(info) << "Recently added " << ah->get_recent_entries_count() << " account history record(s)";
+
+   timer->expires_after( 1min );
+   timer->async_wait( boost::bind( &log_func, boost::asio::placeholders::error, timer, ah ) );
+};
+
+void sync_func(
+   const boost::system::error_code& ec,
+   std::shared_ptr< boost::asio::system_timer > timer,
+   std::shared_ptr< account_history::account_history > ah,
+   std::shared_ptr< koinos::mq::client > client,
+   std::shared_ptr< std::atomic< uint64_t > > chain_lib_ptr )
+{
+   if ( ec == boost::asio::error::operation_aborted )
+      return;
+
    auto ah_lib = ah->get_lib_height();
    uint64_t chain_lib = chain_lib_ptr->load();
 
-   if ( ah_lib >= chain_lib )
-      return false;
-
-   // Get chain head info, if chain LIB is greater than AH LIB, get blocks between chain head and
-   // AH LIB to catch up with chain.
-   rpc::chain::chain_request chain_req;
-   chain_req.mutable_get_head_info();
-
-   auto future = client->rpc( util::service::chain, util::converter::as< std::string >( chain_req ), 1000ms, mq::retry_policy::exponential_backoff );
-   rpc::chain::chain_response chain_resp;
-   chain_resp.ParseFromString( future.get() );
-
-   if( !chain_resp.has_error() && chain_resp.has_get_head_info() )
+   if ( ah_lib < chain_lib )
    {
-      uint64_t request_size = std::min( account_history::max_request_limit, chain_resp.get_head_info().head_topology().height() - ah_lib );
+      // Get chain head info, if chain LIB is greater than AH LIB, get blocks between chain head and
+      // AH LIB to catch up with chain.
+      rpc::chain::chain_request chain_req;
+      chain_req.mutable_get_head_info();
 
-      rpc::block_store::block_store_request bs_req;
-      bs_req.mutable_get_blocks_by_height()->set_allocated_head_block_id( chain_resp.mutable_get_head_info()->mutable_head_topology()->release_id() );
-      bs_req.mutable_get_blocks_by_height()->set_ancestor_start_height( ah_lib + 1 );
-      bs_req.mutable_get_blocks_by_height()->set_num_blocks( request_size );
-      bs_req.mutable_get_blocks_by_height()->set_return_block( true );
-      bs_req.mutable_get_blocks_by_height()->set_return_receipt( true );
+      auto future = client->rpc( util::service::chain, util::converter::as< std::string >( chain_req ), 1000ms, mq::retry_policy::exponential_backoff );
+      rpc::chain::chain_response chain_resp;
+      chain_resp.ParseFromString( future.get() );
 
-      LOG(debug) << "Requesting blocks " << ah_lib + 1 << "-" << ah_lib + 1 + request_size;
-
-      auto future = client->rpc( util::service::block_store, util::converter::as< std::string >( bs_req ), 1000ms, mq::retry_policy::exponential_backoff );
-      rpc::block_store::block_store_response bs_resp;
-      bs_resp.ParseFromString( future.get() );
-
-      if ( !bs_resp.has_error() && bs_resp.has_get_blocks_by_height() )
+      if( !chain_resp.has_error() && chain_resp.has_get_head_info() )
       {
-         auto blocks_by_height = bs_resp.mutable_get_blocks_by_height();
+         uint64_t request_size = std::min( account_history::max_request_limit, chain_resp.get_head_info().head_topology().height() - ah_lib );
 
-         for ( uint32_t i = 0; i < blocks_by_height->block_items_size(); i++ )
+         rpc::block_store::block_store_request bs_req;
+         bs_req.mutable_get_blocks_by_height()->set_allocated_head_block_id( chain_resp.mutable_get_head_info()->mutable_head_topology()->release_id() );
+         bs_req.mutable_get_blocks_by_height()->set_ancestor_start_height( ah_lib + 1 );
+         bs_req.mutable_get_blocks_by_height()->set_num_blocks( request_size );
+         bs_req.mutable_get_blocks_by_height()->set_return_block( true );
+         bs_req.mutable_get_blocks_by_height()->set_return_receipt( true );
+
+         LOG(debug) << "Requesting blocks " << ah_lib + 1 << "-" << ah_lib + 1 + request_size;
+
+         auto future = client->rpc( util::service::block_store, util::converter::as< std::string >( bs_req ), 1000ms, mq::retry_policy::exponential_backoff );
+         rpc::block_store::block_store_response bs_resp;
+         bs_resp.ParseFromString( future.get() );
+
+         if ( !bs_resp.has_error() && bs_resp.has_get_blocks_by_height() )
          {
-            broadcast::block_accepted block_accept;
-            block_accept.set_allocated_block( blocks_by_height->mutable_block_items( i )->release_block() );
-            block_accept.set_allocated_receipt( blocks_by_height->mutable_block_items( i )->release_receipt() );
+            auto blocks_by_height = bs_resp.mutable_get_blocks_by_height();
 
-            ah->handle_block( block_accept );
-
-            if ( request_size == account_history::max_request_limit && block_accept.block().header().height() % 10000 == 0 )
+            for ( uint32_t i = 0; i < blocks_by_height->block_items_size(); i++ )
             {
-               auto to_go = std::chrono::duration_cast< std::chrono::seconds >( std::chrono::system_clock::now().time_since_epoch() - std::chrono::milliseconds( block_accept.block().header().timestamp() ) ).count();
-               LOG(info) << "Sync progress - Height: " << block_accept.block().header().height() << ", ID: " << util::to_hex( block_accept.block().id() ) << " (" << format_time( to_go ) << " block time remaining)";
+               broadcast::block_accepted block_accept;
+               block_accept.set_allocated_block( blocks_by_height->mutable_block_items( i )->release_block() );
+               block_accept.set_allocated_receipt( blocks_by_height->mutable_block_items( i )->release_receipt() );
+
+               ah->handle_block( block_accept );
+
+               if ( request_size == account_history::max_request_limit && block_accept.block().header().height() % 1000 == 0 )
+               {
+                  auto to_go = std::chrono::duration_cast< std::chrono::seconds >( std::chrono::system_clock::now().time_since_epoch() - std::chrono::milliseconds( block_accept.block().header().timestamp() ) ).count();
+                  LOG(info) << "Sync progress - Height: " << block_accept.block().header().height() << ", ID: " << util::to_hex( block_accept.block().id() ) << " (" << format_time( to_go ) << " block time remaining)";
+               }
+
+               if ( block_accept.block().header().height() <= chain_lib )
+               {
+                  broadcast::block_irreversible block_irr;
+                  block_irr.mutable_topology()->set_allocated_id( block_accept.mutable_block()->release_id() );
+                  block_irr.mutable_topology()->set_height( block_accept.block().header().height() );
+                  block_irr.mutable_topology()->set_allocated_previous( block_accept.mutable_block()->mutable_header()->release_previous() );
+
+                  ah->handle_irreversible( block_irr );
+               }
             }
 
-            if ( block_accept.block().header().height() <= chain_lib )
-            {
-               broadcast::block_irreversible block_irr;
-               block_irr.mutable_topology()->set_allocated_id( block_accept.mutable_block()->release_id() );
-               block_irr.mutable_topology()->set_height( block_accept.block().header().height() );
-               block_irr.mutable_topology()->set_allocated_previous( block_accept.mutable_block()->mutable_header()->release_previous() );
-
-               ah->handle_irreversible( block_irr );
-            }
+            timer->expires_after( 1ms );
+            timer->async_wait( boost::bind( &sync_func, boost::asio::placeholders::error, timer, ah, client, chain_lib_ptr ) );
+            return;
          }
-
-         return true;
       }
    }
 
-   return false;
+   timer->expires_after( 1min );
+   timer->async_wait( boost::bind( &sync_func, boost::asio::placeholders::error, timer, ah, client, chain_lib_ptr ) );
 };
 
 int main( int argc, char** argv )
@@ -172,37 +192,9 @@ int main( int argc, char** argv )
    boost::asio::io_context main_ioc, server_ioc, client_ioc;
    auto request_handler = koinos::mq::request_handler( server_ioc );
    auto client = std::make_shared< koinos::mq::client >( client_ioc );
-   auto log_timer = boost::asio::system_timer( server_ioc );
-   auto sync_timer = boost::asio::system_timer( server_ioc );
+   auto log_timer = std::make_shared< boost::asio::system_timer >( server_ioc );
+   auto sync_timer = std::make_shared< boost::asio::system_timer >( server_ioc );
    auto chain_lib = std::make_shared< std::atomic< uint64_t > >( 0 );
-
-   log_func_type log_func = [&]( const boost::system::error_code& ec, std::shared_ptr< account_history::account_history > ah )
-   {
-      if ( ec == boost::asio::error::operation_aborted )
-         return;
-
-      LOG(info) << "Recently added " << ah->get_recent_entries_count() << " account history record(s)";
-
-      log_timer.expires_after( 1min );
-      log_timer.async_wait( boost::bind( log_func, boost::asio::placeholders::error, ah ) );
-   };
-
-   sync_func_type sync_func = [&]( const boost::system::error_code& ec, std::shared_ptr< account_history::account_history > ah )
-   {
-      if ( ec == boost::asio::error::operation_aborted )
-         return;
-
-      if ( sync_func_impl( ec, ah, client, chain_lib ) )
-      {
-         sync_timer.expires_at( std::chrono::system_clock::now() );
-      }
-      else
-      {
-         sync_timer.expires_after( 1min );
-      }
-
-      sync_timer.async_wait( boost::bind( sync_func, boost::asio::placeholders::error, ah ) );
-   };
 
    try
    {
@@ -458,8 +450,8 @@ int main( int argc, char** argv )
          }
       );
 
-      log_timer.expires_after( 60s );
-      log_timer.async_wait( boost::bind( log_func, boost::asio::placeholders::error, account_history ) );
+      log_timer->expires_after( 60s );
+      log_timer->async_wait( boost::bind( &log_func, boost::asio::placeholders::error, log_timer, account_history ) );
 
       if ( statedir.is_relative() )
          statedir = basedir / "account_history" / statedir;
@@ -492,14 +484,13 @@ int main( int argc, char** argv )
       if ( c_resp.has_get_head_info() )
       {
          chain_lib->store( c_resp.get_head_info().last_irreversible_block() );
-         LOG(info) << "Starting LIB " << c_resp.get_head_info().last_irreversible_block();
       }
 
       LOG(info) << "Connecting AMQP request handler...";
       request_handler.connect( amqp_url );
       LOG(info) << "Established request handler connection to the AMQP server";
 
-      sync_timer.async_wait( boost::bind( sync_func, boost::asio::placeholders::error, account_history ) );
+      sync_timer->async_wait( boost::bind( sync_func, boost::asio::placeholders::error, sync_timer, account_history, client, chain_lib ) );
 
       LOG(info) << "Listening for requests over AMQP";
       auto work = asio::make_work_guard( main_ioc );
@@ -534,8 +525,8 @@ int main( int argc, char** argv )
       retcode = EXIT_FAILURE;
    }
 
-   log_timer.cancel();
-   sync_timer.cancel();
+   log_timer->cancel();
+   sync_timer->cancel();
 
    for ( auto& t : threads )
       t.join();

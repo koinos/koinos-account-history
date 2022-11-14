@@ -26,7 +26,7 @@ class account_history_impl {
       void add_transaction( state_db::state_node_ptr state_node, const protocol::transaction&, const protocol::transaction_receipt& );
       void record_history( state_db::state_node_ptr state_node, const std::string& address, const std::string& id );
 
-      std::vector< account_history_entry > get_account_history( const std::string& account, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const;
+      rpc::account_history::get_account_history_response get_account_history( const rpc::account_history::get_account_history_request& ) const;
 
       uint64_t get_lib_height() const;
       uint64_t get_recent_entries_count();
@@ -231,17 +231,17 @@ void account_history_impl::record_history( state_db::state_node_ptr state_node, 
    _recent_entries_count++;
 }
 
-std::vector< account_history_entry > account_history_impl::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const
+rpc::account_history::get_account_history_response account_history_impl::get_account_history( const rpc::account_history::get_account_history_request& req ) const
 {
-   // assert (limit <= 1000)
+   KOINOS_ASSERT( req.limit() <= 500, request_limit_exception, "request limit exceeded" );
 
    history_index index;
-   index.set_address( address );
-   index.set_seq_num( seq_num );
+   *index.mutable_address() = req.address();
+   index.set_seq_num( req.seq_num() );
 
    state_db::state_node_ptr state_node;
 
-   if ( from_lib )
+   if ( req.from_lib() )
    {
       state_node = _db.get_root( _db.get_shared_lock() );
    }
@@ -250,9 +250,9 @@ std::vector< account_history_entry > account_history_impl::get_account_history( 
       state_node = _db.get_head( _db.get_shared_lock() );
    }
 
-   if ( !ascending && seq_num == 0 )
+   if ( !req.ascending() && !req.has_seq_num() )
    {
-      const auto result = state_node->get_object( space::account_metadata(), address );
+      const auto result = state_node->get_object( space::account_metadata(), req.address() );
 
       if ( result )
       {
@@ -260,10 +260,9 @@ std::vector< account_history_entry > account_history_impl::get_account_history( 
       }
    }
 
-   std::vector< account_history_entry > entries;
-   entries.reserve( limit );
+   rpc::account_history::get_account_history_response resp;
 
-   while ( entries.size() < limit )
+   while ( resp.values_size() < req.limit() )
    {
       std::string id;
 
@@ -272,23 +271,23 @@ std::vector< account_history_entry > account_history_impl::get_account_history( 
          break;
 
       auto record_ptr = state_node->get_object( space::history_record(), *id_ptr );
-      // assert record_ptr
+      KOINOS_ASSERT( record_ptr, unknown_record, "unable to find account history record" );
+
       auto record = util::converter::to< history_record >( *record_ptr );
 
-      account_history_entry entry;
-      entry.set_seq_num( index.seq_num() );
+      auto entry = resp.add_values();
+      entry->set_seq_num( index.seq_num() );
+
       if ( record.has_block() )
       {
-         entry.set_allocated_block( record.release_block() );
+         entry->set_allocated_block( record.release_block() );
       }
       else
       {
-         entry.set_allocated_trx( record.release_trx() );
+         entry->set_allocated_trx( record.release_trx() );
       }
 
-      entries.emplace_back( std::move( entry ) );
-
-      if ( ascending )
+      if ( req.ascending() )
       {
          index.set_seq_num( index.seq_num() + 1 );
       }
@@ -298,7 +297,7 @@ std::vector< account_history_entry > account_history_impl::get_account_history( 
       }
    }
 
-   return entries;
+   return resp;
 }
 
 uint64_t account_history_impl::get_lib_height() const
@@ -346,9 +345,9 @@ void account_history::handle_irreversible( const broadcast::block_irreversible& 
    _my->handle_irreversible( irr );
 }
 
-std::vector< account_history_entry > account_history::get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const
+rpc::account_history::get_account_history_response account_history::get_account_history( const rpc::account_history::get_account_history_request& req ) const
 {
-   return _my->get_account_history( address, seq_num, limit, ascending, from_lib );
+   return _my->get_account_history( req );
 }
 
 uint64_t account_history::get_lib_height() const
@@ -360,6 +359,5 @@ uint64_t account_history::get_recent_entries_count()
 {
    return _my->get_recent_entries_count();
 }
-
 
 } // koinos::account_history

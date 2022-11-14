@@ -11,6 +11,9 @@ namespace koinos::account_history {
 
 using rpc::account_history::account_history_entry;
 
+KOINOS_DECLARE_EXCEPTION( request_limit_exception );
+KOINOS_DECLARE_EXCEPTION( unknown_record );
+
 namespace detail { class account_history_impl; }
 
 enum class fork_resolution_algorithm
@@ -36,7 +39,7 @@ public:
    void handle_block( const broadcast::block_accepted& );
    void handle_irreversible( const broadcast::block_irreversible& );
 
-   std::vector< account_history_entry > get_account_history( const std::string& address, uint32_t seq_num, uint32_t limit, bool ascending, bool from_lib ) const;
+   rpc::account_history::get_account_history_response get_account_history( const rpc::account_history::get_account_history_request& ) const;
 
    uint64_t get_lib_height() const;
    uint64_t get_recent_entries_count();

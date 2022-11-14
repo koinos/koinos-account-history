@@ -322,19 +322,7 @@ int main( int argc, char** argv )
                   {
                      case rpc::account_history::account_history_request::RequestCase::kGetAccountHistory:
                      {
-                        const auto& a = args.get_account_history();
-                        const auto& values = account_history->get_account_history(
-                           a.address(),
-                           a.seq_num(),
-                           a.limit(),
-                           a.ascending(),
-                           a.from_lib() );
-
-                        for ( const auto& v : values )
-                        {
-                           resp.mutable_get_account_history()->add_values()->CopyFrom( v );
-                        }
-
+                        *resp.mutable_get_account_history() = account_history->get_account_history( args.get_account_history() );
                         break;
                      }
                      case rpc::account_history::account_history_request::RequestCase::kReserved:

@@ -86,70 +86,87 @@ BOOST_AUTO_TEST_CASE( basic )
 
    BOOST_TEST_MESSAGE( "Checking account history" );
 
-   auto records = _account_history.get_account_history( alice_address, 0, 10, true, false );
+   rpc::account_history::get_account_history_request req;
+   *req.mutable_address() = alice_address;
+   req.set_seq_num( 0 );
+   req.set_limit( 10 );
+   req.set_ascending( true );
+   req.set_from_lib( false );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 2 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_block() );
-   BOOST_CHECK( records[0].block().receipt().id() == block_1_id );
+   auto resp = _account_history.get_account_history( req );
 
-   BOOST_CHECK_EQUAL( records[1].seq_num(), 1 );
-   BOOST_REQUIRE( records[1].has_trx() );
-   BOOST_CHECK( records[1].trx().transaction().id() == trx_1_id );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 2 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_block() );
+   BOOST_CHECK( resp.values( 0 ).block().receipt().id() == block_1_id );
 
-   records = _account_history.get_account_history( bob_address, 0, 10, true, false );
+   BOOST_CHECK_EQUAL( resp.values( 1 ).seq_num(), 1 );
+   BOOST_REQUIRE( resp.values( 1 ).has_trx() );
+   BOOST_CHECK( resp.values( 1 ).trx().transaction().id() == trx_1_id );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 2 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_block() );
-   BOOST_CHECK( records[0].block().receipt().id() == block_1_id );
+   *req.mutable_address() = bob_address;
+   resp = _account_history.get_account_history( req );
 
-   BOOST_CHECK_EQUAL( records[1].seq_num(), 1 );
-   BOOST_REQUIRE( records[1].has_trx() );
-   BOOST_CHECK( records[1].trx().transaction().id() == trx_1_id );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 2 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_block() );
+   BOOST_CHECK( resp.values( 0 ).block().receipt().id() == block_1_id );
 
-   records = _account_history.get_account_history( charlie_address, 0, 10, true, false );
+   BOOST_CHECK_EQUAL( resp.values( 1 ).seq_num(), 1 );
+   BOOST_REQUIRE( resp.values( 1 ).has_trx() );
+   BOOST_CHECK( resp.values( 1 ).trx().transaction().id() == trx_1_id );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 2 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_block() );
-   BOOST_CHECK( records[0].block().receipt().id() == block_1_id );
+   *req.mutable_address() = charlie_address;
+   resp = _account_history.get_account_history( req );
 
-   BOOST_CHECK_EQUAL( records[1].seq_num(), 1 );
-   BOOST_REQUIRE( records[1].has_trx() );
-   BOOST_CHECK( records[1].trx().transaction().id() == trx_1_id );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 2 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_block() );
+   BOOST_CHECK( resp.values( 0 ).block().receipt().id() == block_1_id );
 
-   records = _account_history.get_account_history( dave_address, 0, 10, true, false );
+   BOOST_CHECK_EQUAL( resp.values( 1 ).seq_num(), 1 );
+   BOOST_REQUIRE( resp.values( 1 ).has_trx() );
+   BOOST_CHECK( resp.values( 1 ).trx().transaction().id() == trx_1_id );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 1 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_trx() );
-   BOOST_CHECK( records[0].trx().transaction().id() == trx_1_id );
+   *req.mutable_address() = dave_address;
+   resp = _account_history.get_account_history( req );
 
-   records = _account_history.get_account_history( eve_address, 0, 10, true, false );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 1 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_trx() );
+   BOOST_CHECK( resp.values( 0 ).trx().transaction().id() == trx_1_id );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 1 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_trx() );
-   BOOST_CHECK( records[0].trx().transaction().id() == trx_1_id );
+   *req.mutable_address() = eve_address;
+   resp = _account_history.get_account_history( req );
+
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 1 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_trx() );
+   BOOST_CHECK( resp.values( 0 ).trx().transaction().id() == trx_1_id );
 
    // If we read from LIB, no records should be returned.
    BOOST_TEST_MESSAGE( "Checking history from LIB" );
 
-   records = _account_history.get_account_history( alice_address, 0, 10, true, true );
-   BOOST_CHECK_EQUAL( records.size(), 0 );
+   *req.mutable_address() = alice_address;
+   req.set_from_lib( true );
+   resp = _account_history.get_account_history( req );
+   BOOST_CHECK_EQUAL( resp.values_size(), 0 );
 
-   records = _account_history.get_account_history( bob_address, 0, 10, true, true );
-   BOOST_CHECK_EQUAL( records.size(), 0 );
+   *req.mutable_address() = bob_address;
+   resp = _account_history.get_account_history( req );
+   BOOST_CHECK_EQUAL( resp.values_size(), 0 );
 
-   records = _account_history.get_account_history( charlie_address, 0, 10, true, true );
-   BOOST_CHECK_EQUAL( records.size(), 0 );
+   *req.mutable_address() = charlie_address;
+   resp = _account_history.get_account_history( req );
+   BOOST_CHECK_EQUAL( resp.values_size(), 0 );
 
-   records = _account_history.get_account_history( dave_address, 0, 10, true, true );
-   BOOST_CHECK_EQUAL( records.size(), 0 );
+   *req.mutable_address() = dave_address;
+   resp = _account_history.get_account_history( req );
+   BOOST_CHECK_EQUAL( resp.values_size(), 0 );
 
-   records = _account_history.get_account_history( eve_address, 0, 10, true, true );
-   BOOST_CHECK_EQUAL( records.size(), 0 );
+   *req.mutable_address() = eve_address;
+   resp = _account_history.get_account_history( req );
+   BOOST_CHECK_EQUAL( resp.values_size(), 0 );
 
    BOOST_TEST_MESSAGE( "Incrementing LIB and checking history advances when reading from LIB" );
 
@@ -158,52 +175,57 @@ BOOST_AUTO_TEST_CASE( basic )
 
    _account_history.handle_irreversible( block_irr );
 
-   records = _account_history.get_account_history( alice_address, 0, 10, true, true );
+   *req.mutable_address() = alice_address;
+   resp = _account_history.get_account_history( req );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 2 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_block() );
-   BOOST_CHECK( records[0].block().receipt().id() == block_1_id );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 2 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_block() );
+   BOOST_CHECK( resp.values( 0 ).block().receipt().id() == block_1_id );
 
-   BOOST_CHECK_EQUAL( records[1].seq_num(), 1 );
-   BOOST_REQUIRE( records[1].has_trx() );
-   BOOST_CHECK( records[1].trx().transaction().id() == trx_1_id );
+   BOOST_CHECK_EQUAL( resp.values( 1 ).seq_num(), 1 );
+   BOOST_REQUIRE( resp.values( 1 ).has_trx() );
+   BOOST_CHECK( resp.values( 1 ).trx().transaction().id() == trx_1_id );
 
-   records = _account_history.get_account_history( bob_address, 0, 10, true, true );
+   *req.mutable_address() = bob_address;
+   resp = _account_history.get_account_history( req );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 2 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_block() );
-   BOOST_CHECK( records[0].block().receipt().id() == block_1_id );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 2 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_block() );
+   BOOST_CHECK( resp.values( 0 ).block().receipt().id() == block_1_id );
 
-   BOOST_CHECK_EQUAL( records[1].seq_num(), 1 );
-   BOOST_REQUIRE( records[1].has_trx() );
-   BOOST_CHECK( records[1].trx().transaction().id() == trx_1_id );
+   BOOST_CHECK_EQUAL( resp.values( 1 ).seq_num(), 1 );
+   BOOST_REQUIRE( resp.values( 1 ).has_trx() );
+   BOOST_CHECK( resp.values( 1 ).trx().transaction().id() == trx_1_id );
 
-   records = _account_history.get_account_history( charlie_address, 0, 10, true, true );
+   *req.mutable_address() = charlie_address;
+   resp = _account_history.get_account_history( req );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 2 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_block() );
-   BOOST_CHECK( records[0].block().receipt().id() == block_1_id );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 2 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_block() );
+   BOOST_CHECK( resp.values( 0 ).block().receipt().id() == block_1_id );
 
-   BOOST_CHECK_EQUAL( records[1].seq_num(), 1 );
-   BOOST_REQUIRE( records[1].has_trx() );
-   BOOST_CHECK( records[1].trx().transaction().id() == trx_1_id );
+   BOOST_CHECK_EQUAL( resp.values( 1 ).seq_num(), 1 );
+   BOOST_REQUIRE( resp.values( 1 ).has_trx() );
+   BOOST_CHECK( resp.values( 1 ).trx().transaction().id() == trx_1_id );
 
-   records = _account_history.get_account_history( dave_address, 0, 10, true, true );
+   *req.mutable_address() = dave_address;
+   resp = _account_history.get_account_history( req );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 1 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_trx() );
-   BOOST_CHECK( records[0].trx().transaction().id() == trx_1_id );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 1 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_trx() );
+   BOOST_CHECK( resp.values( 0 ).trx().transaction().id() == trx_1_id );
 
-   records = _account_history.get_account_history( eve_address, 0, 10, true, true );
+   *req.mutable_address() = eve_address;
+   resp = _account_history.get_account_history( req );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 1 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_trx() );
-   BOOST_CHECK( records[0].trx().transaction().id() == trx_1_id );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 1 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_trx() );
+   BOOST_CHECK( resp.values( 0 ).trx().transaction().id() == trx_1_id );
 }
 
 BOOST_AUTO_TEST_CASE( pagination )
@@ -219,7 +241,7 @@ BOOST_AUTO_TEST_CASE( pagination )
 
    broadcast::block_irreversible block_irr;
 
-   BOOST_TEST_MESSAGE( "Add 1000 history records..." );
+   BOOST_TEST_MESSAGE( "Add 1000 history resp..." );
 
    for ( uint32_t i = 0; i < 1000; i++ )
    {
@@ -236,33 +258,49 @@ BOOST_AUTO_TEST_CASE( pagination )
 
    BOOST_TEST_MESSAGE( "Check history ascending" );
 
+   rpc::account_history::get_account_history_request req;
+   *req.mutable_address() = alice_address;
+   req.set_seq_num( 0 );
+   req.set_limit( 250 );
+   req.set_ascending( true );
+   req.set_from_lib( false );
+
    for ( uint32_t i = 0; i < 1; i++ )
    {
-      auto records = _account_history.get_account_history( alice_address, i * 250, 250, true, false );
+      req.set_seq_num( i * 250 );
+      auto resp = _account_history.get_account_history( req );
 
-      BOOST_REQUIRE_EQUAL( records.size(), 250 );
+      BOOST_REQUIRE_EQUAL( resp.values_size(), 250 );
 
       for ( uint32_t j = 0; j < 250; j++ )
       {
-         BOOST_CHECK_EQUAL( records[j].seq_num(), i * 250 + j );
-         BOOST_REQUIRE( records[j].has_trx() );
-         BOOST_CHECK( records[j].trx().transaction().id() == util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, "trx_"s + std::to_string( i * 250 + j ) ) ) );
+         BOOST_CHECK_EQUAL( resp.values( j ).seq_num(), i * 250 + j );
+         BOOST_REQUIRE( resp.values( j ).has_trx() );
+         BOOST_CHECK( resp.values( j ).trx().transaction().id() == util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, "trx_"s + std::to_string( i * 250 + j ) ) ) );
       }
    }
 
    BOOST_TEST_MESSAGE( "Check history descending" );
 
+   req.set_ascending( false );
+   req.clear_seq_num();
+
    for ( uint32_t i = 0; i < 4; i++ )
    {
-      auto records = _account_history.get_account_history( alice_address, i == 0 ? 0 : 999 - i * 250, 250, false, false );
+      if ( i != 0 )
+      {
+         req.set_seq_num( 999 - i * 250 );
+      }
 
-      BOOST_REQUIRE_EQUAL( records.size(), 250 );
+      auto resp = _account_history.get_account_history( req );
+
+      BOOST_REQUIRE_EQUAL( resp.values_size(), 250 );
 
       for ( uint32_t j = 0; j < 10; j++ )
       {
-         BOOST_CHECK_EQUAL( records[j].seq_num(), 999 - ( i * 250 + j ) );
-         BOOST_REQUIRE( records[j].has_trx() );
-         BOOST_CHECK( records[j].trx().transaction().id() == util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, "trx_"s + std::to_string( 999 - ( i * 250 + j ) ) ) ) );
+         BOOST_CHECK_EQUAL( resp.values( j ).seq_num(), 999 - ( i * 250 + j ) );
+         BOOST_REQUIRE( resp.values( j ).has_trx() );
+         BOOST_CHECK( resp.values( j ).trx().transaction().id() == util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, "trx_"s + std::to_string( 999 - ( i * 250 + j ) ) ) ) );
       }
    }
 }
@@ -298,15 +336,23 @@ BOOST_AUTO_TEST_CASE( whitelist )
 
    BOOST_TEST_MESSAGE( "Checking history is only the whitelisted address" );
 
-   auto records = ah.get_account_history( alice_address, 0, 10, true, false );
+   rpc::account_history::get_account_history_request req;
+   *req.mutable_address() = alice_address;
+   req.set_seq_num( 0 );
+   req.set_limit( 10 );
+   req.set_ascending( true );
+   req.set_from_lib( false );
 
-   BOOST_REQUIRE_EQUAL( records.size(), 1 );
-   BOOST_CHECK_EQUAL( records[0].seq_num(), 0 );
-   BOOST_REQUIRE( records[0].has_block() );
-   BOOST_CHECK( records[0].block().receipt().id() == block_1_id );
+   auto resp = ah.get_account_history( req );
 
-   records = ah.get_account_history( bob_address, 0, 10, true, true );
-   BOOST_CHECK_EQUAL( records.size(), 0 );
+   BOOST_REQUIRE_EQUAL( resp.values_size(), 1 );
+   BOOST_CHECK_EQUAL( resp.values( 0 ).seq_num(), 0 );
+   BOOST_REQUIRE( resp.values( 0 ).has_block() );
+   BOOST_CHECK( resp.values( 0 ).block().receipt().id() == block_1_id );
+
+   *req.mutable_address() = bob_address;
+   resp = ah.get_account_history( req );
+   BOOST_CHECK_EQUAL( resp.values_size(), 0 );
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -25,6 +25,7 @@
 #include <koinos/util/options.hpp>
 #include <koinos/util/random.hpp>
 #include <koinos/util/services.hpp>
+#include <koinos/util/time.hpp>
 
 #include "git_version.h"
 
@@ -56,37 +57,6 @@ using namespace boost;
 using namespace koinos;
 
 const std::string& version_string();
-
-std::string format_time( int64_t time )
-{
-   std::stringstream ss;
-
-   auto seconds = time % 60;
-   time /= 60;
-   auto minutes = time % 60;
-   time /= 60;
-   auto hours = time % 24;
-   time /= 24;
-   auto days = time % 365;
-   auto years = time / 365;
-
-   if ( years )
-   {
-      ss << years << "y, " << days << "d, ";
-   }
-   else if ( days )
-   {
-      ss << days << "d, ";
-   }
-
-   ss << std::setw(2) << std::setfill('0') << hours;
-   ss << std::setw(1) << "h, ";
-   ss << std::setw(2) << std::setfill('0') << minutes;
-   ss << std::setw(1) << "m, ";
-   ss << std::setw(2) << std::setfill('0') << seconds;
-   ss << std::setw(1) << "s";
-   return ss.str();
-}
 
 void log_func(
    const boost::system::error_code& ec,
@@ -157,8 +127,8 @@ void sync_func(
 
                if ( request_size == account_history::max_request_limit && block_accept.block().header().height() % 1000 == 0 )
                {
-                  auto to_go = std::chrono::duration_cast< std::chrono::seconds >( std::chrono::system_clock::now().time_since_epoch() - std::chrono::milliseconds( block_accept.block().header().timestamp() ) ).count();
-                  LOG(info) << "Sync progress - Height: " << block_accept.block().header().height() << ", ID: " << util::to_hex( block_accept.block().id() ) << " (" << format_time( to_go ) << " block time remaining)";
+                  auto to_go = std::chrono::duration_cast< std::chrono::seconds >( std::chrono::system_clock::now().time_since_epoch() - std::chrono::milliseconds( block_accept.block().header().timestamp() ) );
+                  LOG(info) << "Sync progress - Height: " << block_accept.block().header().height() << ", ID: " << util::to_hex( block_accept.block().id() ) << " (" << util::format_duration( to_go ) << " block time remaining)";
                }
 
                if ( block_accept.block().header().height() <= chain_lib )
@@ -248,7 +218,7 @@ int main( int argc, char** argv )
       {
          config = YAML::LoadFile( yaml_config );
          global_config = config[ "global" ];
-         account_history_config = config[ "account_history" ];
+         account_history_config = config[ util::service::account_history ];
       }
 
       auto amqp_url              = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, account_history_config, global_config );
@@ -260,7 +230,7 @@ int main( int argc, char** argv )
       auto fork_algorithm_option = util::get_option< std::string >( FORK_ALGORITHM_OPTION, FORK_ALGORITHM_DEFAULT, args, account_history_config, global_config );
       auto whitelist_addresses   = util::get_options< std::string >( WHITELIST_OPTION, args, account_history_config, global_config );
 
-      koinos::initialize_logging( "account_history", instance_id, log_level, basedir / "account_history" / "logs" );
+      koinos::initialize_logging( util::service::account_history, instance_id, log_level, basedir / util::service::account_history / "logs" );
 
       LOG(info) << version_string();
 
@@ -343,7 +313,7 @@ int main( int argc, char** argv )
       std::shared_ptr< koinos::account_history::account_history > account_history = std::make_shared< koinos::account_history::account_history >( whitelist );
 
       request_handler.add_rpc_handler(
-         "account_history",
+         util::service::account_history,
          [&]( const std::string& msg ) -> std::string
          {
             koinos::rpc::account_history::account_history_request args;
@@ -454,7 +424,7 @@ int main( int argc, char** argv )
       log_timer->async_wait( boost::bind( &log_func, boost::asio::placeholders::error, log_timer, account_history ) );
 
       if ( statedir.is_relative() )
-         statedir = basedir / "account_history" / statedir;
+         statedir = basedir / util::service::account_history / statedir;
 
       if ( !std::filesystem::exists( statedir ) )
          std::filesystem::create_directories( statedir );

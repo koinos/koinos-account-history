@@ -8,7 +8,7 @@ if [ "$RUN_TYPE" = "test" ]; then
    exec ctest -j3 --output-on-failure && ../libraries/vendor/mira/test/mira_test
 elif [ "$RUN_TYPE" = "coverage" ]; then
    cd $(dirname "$0")/../build/tests
-   exec valgrind --error-exitcode=1 --leak-check=yes ./koinos_accoun_history_tests
+   exec valgrind --error-exitcode=1 --leak-check=yes ./koinos_account_history_tests
 fi
 
 if ! [[ -z $BUILD_DOCKER ]]; then

@@ -6,12 +6,6 @@
 
 namespace koinos {
 
-namespace chain {
-
-bool operator<( const object_space& lhs, const object_space& rhs );
-
-} // chain
-
 namespace account_history::space {
 
 const chain::object_space history_record();

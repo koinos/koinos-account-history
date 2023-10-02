@@ -187,7 +187,7 @@ int main( int argc, char** argv )
          (RESET_OPTION                     , program_options::value< bool >(), "Reset the database")
          (FORK_ALGORITHM_OPTION        ",f", program_options::value< std::string >(), "The fork resolution algorithm to use. Can be 'fifo', 'pob', or 'block-time'. (Default: 'fifo')")
          (LOG_DIR_OPTION                   , program_options::value< std::string >(), "The logging directory")
-         (LOG_COLOR_OPTION                 , program_options::value< bool >(), "Log color toggle");;
+         (LOG_COLOR_OPTION                 , program_options::value< bool >(), "Log color toggle");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );

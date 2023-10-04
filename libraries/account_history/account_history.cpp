@@ -132,7 +132,7 @@ void account_history_impl::handle_block( const broadcast::block_accepted& block_
       state_node->put_object( space::history_record(), block_accept.block().id(), &record_str );
 
       // Add records for all contained transactions
-      for ( std::size_t i = 0; i < block_accept.block().transactions().size(); i++ )
+      for ( int i = 0; i < block_accept.block().transactions().size(); i++ )
       {
          add_transaction( state_node, block_accept.block().transactions( i ), block_accept.receipt().transaction_receipts( i ) );
       }

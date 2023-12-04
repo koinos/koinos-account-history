@@ -40,6 +40,12 @@
 #define AMQP_DEFAULT                   "amqp://guest:guest@localhost:5672/"
 #define LOG_LEVEL_OPTION               "log-level"
 #define LOG_LEVEL_DEFAULT              "info"
+#define LOG_DIR_OPTION                 "log-dir"
+#define LOG_DIR_DEFAULT                ""
+#define LOG_COLOR_OPTION               "log-color"
+#define LOG_COLOR_DEFAULT              true
+#define LOG_DATETIME_OPTION            "log-datetime"
+#define LOG_DATETIME_DEFAULT           true
 #define INSTANCE_ID_OPTION             "instance-id"
 #define STATEDIR_OPTION                "statedir"
 #define STATEDIR_DEFAULT               "db"
@@ -103,7 +109,7 @@ void sync_func(
          rpc::block_store::block_store_request bs_req;
          bs_req.mutable_get_blocks_by_height()->set_allocated_head_block_id( chain_resp.mutable_get_head_info()->mutable_head_topology()->release_id() );
          bs_req.mutable_get_blocks_by_height()->set_ancestor_start_height( ah_lib + 1 );
-         bs_req.mutable_get_blocks_by_height()->set_num_blocks( request_size );
+         bs_req.mutable_get_blocks_by_height()->set_num_blocks( static_cast< uint32_t >( request_size ) );
          bs_req.mutable_get_blocks_by_height()->set_return_block( true );
          bs_req.mutable_get_blocks_by_height()->set_return_receipt( true );
 
@@ -182,6 +188,9 @@ int main( int argc, char** argv )
             "The location of the blockchain state files (absolute path or relative to basedir/chain)")
          (RESET_OPTION                     , program_options::value< bool >(), "Reset the database")
          (FORK_ALGORITHM_OPTION        ",f", program_options::value< std::string >(), "The fork resolution algorithm to use. Can be 'fifo', 'pob', or 'block-time'. (Default: 'fifo')")
+         (LOG_DIR_OPTION                   , program_options::value< std::string >(), "The logging directory")
+         (LOG_COLOR_OPTION                 , program_options::value< bool >(), "Log color toggle")
+         (LOG_DATETIME_OPTION              , program_options::value< bool >(), "Log datetime on console toggle")
          (ADDRESS_WHITELIST_OPTION     ",w", program_options::value< std::vector< std::string > >()->multitoken(), "Addresses to whitelist");
 
       program_options::variables_map args;
@@ -224,6 +233,9 @@ int main( int argc, char** argv )
 
       auto amqp_url              = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, account_history_config, global_config );
       auto log_level             = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, account_history_config, global_config );
+      auto log_dir               = util::get_option< std::string >( LOG_DIR_OPTION, LOG_DIR_DEFAULT, args, account_history_config, global_config );
+      auto log_color             = util::get_option< bool >( LOG_COLOR_OPTION, LOG_COLOR_DEFAULT, args, account_history_config, global_config );
+      auto log_datetime          = util::get_option< bool >( LOG_DATETIME_OPTION, LOG_DATETIME_DEFAULT, args, account_history_config, global_config );
       auto instance_id           = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, account_history_config, global_config );
       auto jobs                  = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, account_history_config, global_config );
       auto statedir              = std::filesystem::path( util::get_option< std::string >( STATEDIR_OPTION, STATEDIR_DEFAULT, args, account_history_config, global_config ) );
@@ -231,7 +243,15 @@ int main( int argc, char** argv )
       auto fork_algorithm_option = util::get_option< std::string >( FORK_ALGORITHM_OPTION, FORK_ALGORITHM_DEFAULT, args, account_history_config, global_config );
       auto whitelist_addresses   = util::get_options< std::string >( ADDRESS_WHITELIST_OPTION, args, account_history_config, global_config );
 
-      koinos::initialize_logging( util::service::account_history, instance_id, log_level, basedir / util::service::account_history / "logs" );
+      std::optional< std::filesystem::path > logdir_path;
+      if ( !log_dir.empty() )
+      {
+         logdir_path = std::make_optional< std::filesystem::path >( log_dir );
+         if ( logdir_path->is_relative() )
+            logdir_path = basedir / util::service::account_history / *logdir_path;
+      }
+
+      koinos::initialize_logging( util::service::account_history, instance_id, log_level, logdir_path, log_color, log_datetime );
 
       LOG(info) << version_string();
 

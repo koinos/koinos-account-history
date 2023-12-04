@@ -54,7 +54,7 @@
 #define JOBS_DEFAULT                   uint64_t( 2 )
 #define FORK_ALGORITHM_OPTION          "fork-algorithm"
 #define FORK_ALGORITHM_DEFAULT         FIFO_ALGORITHM
-#define WHITELIST_OPTION               "whitelist"
+#define ADDRESS_WHITELIST_OPTION       "address-whitelist"
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
@@ -190,7 +190,8 @@ int main( int argc, char** argv )
          (FORK_ALGORITHM_OPTION        ",f", program_options::value< std::string >(), "The fork resolution algorithm to use. Can be 'fifo', 'pob', or 'block-time'. (Default: 'fifo')")
          (LOG_DIR_OPTION                   , program_options::value< std::string >(), "The logging directory")
          (LOG_COLOR_OPTION                 , program_options::value< bool >(), "Log color toggle")
-         (LOG_DATETIME_OPTION              , program_options::value< bool >(), "Log datetime on console toggle");
+         (LOG_DATETIME_OPTION              , program_options::value< bool >(), "Log datetime on console toggle")
+         (ADDRESS_WHITELIST_OPTION     ",w", program_options::value< std::vector< std::string > >()->multitoken(), "Addresses to whitelist");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -240,7 +241,7 @@ int main( int argc, char** argv )
       auto statedir              = std::filesystem::path( util::get_option< std::string >( STATEDIR_OPTION, STATEDIR_DEFAULT, args, account_history_config, global_config ) );
       auto reset                 = util::get_option< bool >( RESET_OPTION, false, args, account_history_config, global_config );
       auto fork_algorithm_option = util::get_option< std::string >( FORK_ALGORITHM_OPTION, FORK_ALGORITHM_DEFAULT, args, account_history_config, global_config );
-      auto whitelist_addresses   = util::get_options< std::string >( WHITELIST_OPTION, args, account_history_config, global_config );
+      auto whitelist_addresses   = util::get_options< std::string >( ADDRESS_WHITELIST_OPTION, args, account_history_config, global_config );
 
       std::optional< std::filesystem::path > logdir_path;
       if ( !log_dir.empty() )

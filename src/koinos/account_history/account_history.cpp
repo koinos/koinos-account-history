@@ -63,7 +63,11 @@ void account_history_impl::open( const std::filesystem::path& p, fork_resolution
       comp = &state_db::fifo_comparator;
   }
 
-  _db.open( p, []( state_db::state_node_ptr ) {}, comp, _db.get_unique_lock() );
+  _db.open(
+    p,
+    []( state_db::state_node_ptr ) {},
+    comp,
+    _db.get_unique_lock() );
 
   if( reset )
   {

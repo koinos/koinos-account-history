@@ -41,7 +41,7 @@ When submitting a new issue use your best effort to choose the appropriate issue
 People *love* thorough bug reports. I'm not even kidding.
 
 ## Use consistent code styling
-Before submitting a pull request ensure that your code matches the style of repository. Pay special attention to 
+Before submitting a pull request ensure that your code matches the style of repository. Pay special attention to
 spaces, tabs, and line endings.
 
 ## License

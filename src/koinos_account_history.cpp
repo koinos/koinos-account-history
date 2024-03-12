@@ -308,22 +308,22 @@ int main( int argc, char** argv )
       LOG( warning ) << "Could not find config (config.yml or config.yaml expected), using default values";
     }
 
-    account_history::fork_resolution_algorithm fork_algorithm;
+    state_db::fork_resolution_algorithm fork_algorithm;
 
     if( fork_algorithm_option == FIFO_ALGORITHM )
     {
       LOG( info ) << "Using fork resolution algorithm: " << FIFO_ALGORITHM;
-      fork_algorithm = account_history::fork_resolution_algorithm::fifo;
+      fork_algorithm = state_db::fork_resolution_algorithm::fifo;
     }
     else if( fork_algorithm_option == BLOCK_TIME_ALGORITHM )
     {
       LOG( info ) << "Using fork resolution algorithm: " << BLOCK_TIME_ALGORITHM;
-      fork_algorithm = account_history::fork_resolution_algorithm::block_time;
+      fork_algorithm = state_db::fork_resolution_algorithm::block_time;
     }
     else if( fork_algorithm_option == POB_ALGORITHM )
     {
       LOG( info ) << "Using fork resolution algorithm: " << POB_ALGORITHM;
-      fork_algorithm = account_history::fork_resolution_algorithm::pob;
+      fork_algorithm = state_db::fork_resolution_algorithm::pob;
     }
     else
     {

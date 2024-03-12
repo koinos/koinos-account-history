@@ -18,7 +18,7 @@ public:
   account_history_impl( const std::set< std::string >& );
   ~account_history_impl() = default;
 
-  void open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset );
+  void open( const std::filesystem::path& p, state_db::fork_resolution_algorithm algo, bool reset );
   void close();
 
   void handle_block( const broadcast::block_accepted& );
@@ -45,28 +45,14 @@ account_history_impl::account_history_impl( const std::set< std::string >& white
     _whitelist( whitelist )
 {}
 
-void account_history_impl::open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset )
+void account_history_impl::open( const std::filesystem::path& p, state_db::fork_resolution_algorithm algo, bool reset )
 {
   state_db::state_node_comparator_function comp;
-
-  switch( algo )
-  {
-    case fork_resolution_algorithm::block_time:
-      comp = &state_db::block_time_comparator;
-      break;
-    case fork_resolution_algorithm::pob:
-      comp = &state_db::pob_comparator;
-      break;
-    case fork_resolution_algorithm::fifo:
-      [[fallthrough]];
-    default:
-      comp = &state_db::fifo_comparator;
-  }
 
   _db.open(
     p,
     []( state_db::state_node_ptr ) {},
-    comp,
+    algo,
     _db.get_unique_lock() );
 
   if( reset )
@@ -340,7 +326,7 @@ account_history::~account_history()
   _my->close();
 }
 
-void account_history::open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset )
+void account_history::open( const std::filesystem::path& p, state_db::fork_resolution_algorithm algo, bool reset )
 {
   _my->open( p, algo, reset );
 }

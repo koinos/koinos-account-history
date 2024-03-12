@@ -23,7 +23,7 @@ struct account_history_fixture
     LOG( info ) << "Test temp dir: " << _state_dir.string();
     std::filesystem::create_directory( _state_dir );
 
-    _account_history.open( _state_dir, account_history::fork_resolution_algorithm::fifo, false );
+    _account_history.open( _state_dir, state_db::fork_resolution_algorithm::fifo, false );
   }
 
   ~account_history_fixture()
@@ -339,7 +339,7 @@ BOOST_AUTO_TEST_CASE( whitelist )
   _account_history.close();
 
   account_history::account_history ah( whitelist );
-  ah.open( _state_dir, account_history::fork_resolution_algorithm::fifo, false );
+  ah.open( _state_dir, state_db::fork_resolution_algorithm::fifo, false );
 
   BOOST_TEST_MESSAGE( "Handling block with whitelist enabled" );
 

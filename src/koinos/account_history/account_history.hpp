@@ -20,13 +20,6 @@ namespace detail {
 class account_history_impl;
 } // namespace detail
 
-enum class fork_resolution_algorithm
-{
-  fifo,
-  block_time,
-  pob
-};
-
 class account_history
 {
 private:
@@ -37,7 +30,7 @@ public:
   account_history( const std::set< std::string >& whitelist );
   ~account_history();
 
-  void open( const std::filesystem::path& p, fork_resolution_algorithm algo, bool reset );
+  void open( const std::filesystem::path& p, state_db::fork_resolution_algorithm algo, bool reset );
   void close();
 
   void handle_block( const broadcast::block_accepted& );

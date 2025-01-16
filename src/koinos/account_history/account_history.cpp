@@ -49,11 +49,7 @@ void account_history_impl::open( const std::filesystem::path& p, state_db::fork_
 {
   state_db::state_node_comparator_function comp;
 
-  _db.open(
-    p,
-    []( state_db::state_node_ptr ) {},
-    algo,
-    _db.get_unique_lock() );
+  _db.open( p, []( state_db::state_node_ptr ) {}, algo, _db.get_unique_lock() );
 
   if( reset )
   {

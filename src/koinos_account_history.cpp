@@ -423,7 +423,13 @@ int main( int argc, char** argv )
           {
             auto error = resp.mutable_error();
             error->set_message( e.what() );
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             error->set_data( e.get_stacktrace() );
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
           }
           catch( std::exception& e )
           {

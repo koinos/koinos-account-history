@@ -19,7 +19,7 @@ ENV CC=gcc
 ENV CXX=g++
 ENV CMAKE_C_COMPILER_LAUNCHER=ccache
 ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache
-ENV CCACHE_DIR /build/.ccache
+ENV CCACHE_DIR=/build/.ccache
 
 RUN git submodule update --init --recursive && \
     cmake -DCMAKE_BUILD_TYPE=Release . && \
